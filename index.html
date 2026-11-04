@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10131b">
+  <title>ТВ Онлайн — IPTV-плеер</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    :root { color-scheme: dark; --bg:#0b0e14; --panel:#141a24; --panel2:#1b2330; --line:#293344; --text:#f3f6fb; --muted:#9aa8ba; --accent:#69a7ff; }
+    * { box-sizing:border-box }
+    body { margin:0; min-height:100vh; height:100vh; overflow:hidden; background:radial-gradient(ellipse at 15% 0%,#1b2b42 0,transparent 38%),var(--bg); color:var(--text); font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; display:flex; flex-direction:column }
+    header { width:100%; margin:0; padding:14px 22px; display:flex; align-items:center; justify-content:space-between; gap:18px; flex:none }
+    .brand { display:flex; align-items:center; gap:13px }
+    .logo { width:40px;height:40px;border-radius:13px;background:linear-gradient(135deg,#72b4ff,#5865e8);display:grid;place-items:center;font-size:21px;box-shadow:0 8px 28px #467de944 }
+    h1 { font-size:clamp(20px,2.5vw,26px);margin:0;letter-spacing:-.6px }
+    .sub { color:var(--muted);font-size:13px;margin-top:2px }
+    .layout { width:100%; max-width:none; margin:0; padding:8px 14px 8px; display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:14px; flex:1; min-height:0; align-items:center }
+    .player-card,.sidebar { background:var(--panel);border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:0 18px 55px #0003 }
+    .player-card { min-width:0; display:block; align-self:center; width:100% }
+    .video-wrap { background:#05070a; width:100%; aspect-ratio:16/9; height:auto; min-height:0; position:relative; display:grid; place-items:center; overflow:hidden }
+    video { width:100%;height:100%;max-height:100%;display:block;object-fit:contain;background:#05070a }
+    .player-card:fullscreen { background:#05070a;border:0;border-radius:0;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center }
+    .player-card:fullscreen .video-wrap { width:100%;max-height:100vh;aspect-ratio:16/9;height:auto }
+    
+    .placeholder { position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#aeb9c8;text-align:center;padding:24px;pointer-events:none }
+    .placeholder .big { font-size:46px;opacity:.8 }
+    .placeholder.hidden { display:none }
+    
+    .sidebar { padding:12px;align-self:center;min-height:0;max-height:calc(100vh - 16px);display:flex;flex-direction:column }
+    .side-head { display:flex;justify-content:space-between;align-items:center;margin-bottom:9px }
+    .side-head h2 {font-size:16px;margin:0}
+    .count {font-size:12px;color:var(--muted)}
+    .search { width:100%;border:1px solid var(--line);background:#0e131c;color:var(--text);padding:9px 11px;border-radius:10px;outline:none;margin-bottom:9px;font:inherit }
+    .search:focus {border-color:var(--accent)}
+    .channels { display:flex;flex-direction:column;gap:7px;flex:1;min-height:0;overflow:auto;padding-right:3px }
+    .channel { display:flex;align-items:center;gap:9px;width:100%;padding:8px 9px;border:1px solid transparent;border-radius:11px;background:var(--panel2);color:var(--text);text-align:left;cursor:pointer;transition:.15s;font:inherit }
+    .channel:hover {background:#253247;border-color:#3a4a61}
+    .channel.active {background:#203653;border-color:#4c86ca}
+    .num { width:30px;height:30px;border-radius:9px;background:#29364a;display:grid;place-items:center;color:#bcd8ff;font-size:11px;font-weight:700;flex:none }
+    .channel.active .num {background:#3b6fa9;color:white}
+    .channel-info {min-width:0;flex:1}
+    .channel-name {font-weight:600;font-size:13px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .channel-type {display:block;color:var(--muted);font-size:11px;margin-top:1px}
+    .channel-actions {display:flex;gap:4px;flex:none}
+    .mini-btn {width:24px;height:24px;border:1px solid #3a4658;border-radius:7px;background:#202a39;color:#c7d6e8;cursor:pointer;font-size:12px;line-height:1}
+    .mini-btn:hover {background:#34465f;color:white}
+    .mini-btn:disabled {opacity:.3;cursor:default}
+    .channel {min-width:0}
+    .channel-main {display:flex;align-items:center;gap:11px;flex:1;min-width:0;background:none;border:0;color:inherit;text-align:left;padding:0;cursor:pointer;font:inherit}
+    .empty {color:var(--muted);text-align:center;padding:24px 8px}
+    .notice {max-width:1320px;margin:0 auto 28px;padding:0 28px;color:var(--muted);font-size:12px}
+    .notice a {color:#a9cbff}
+    @media(max-width:900px){body{height:auto;min-height:100vh;overflow:auto}.layout{grid-template-columns:1fr;flex:none;padding:8px 10px}.player-card{min-height:0}.video-wrap{aspect-ratio:16/9;flex:none}.sidebar{order:2;min-height:0;max-height:none;padding:12px}.channels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-height:520px}}
+    @media(max-width:540px){.layout{padding:6px 8px}.sidebar{padding:10px}.channels{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+
+
+  <main class="layout">
+    <section class="player-card">
+      <div class="video-wrap">
+        <video id="video" controls playsinline autoplay></video>
+        <div class="placeholder" id="placeholder">
+          <div class="big">📺</div>
+          <strong>Выберите канал</strong>
+          <span>Трансляция появится здесь</span>
+        </div>
+      </div>
+
+    </section>
+
+    <aside class="sidebar">
+      <div class="side-head"><h2>Каналы</h2></div>
+      <input class="search" id="search" type="search" placeholder="Поиск канала…" aria-label="Поиск канала">
+      <div class="channels" id="channels"></div>
+    </aside>
+  </main>
+
+
+
+<script>
+  const defaultChannels = [
+    { id: "168", name: "TLC", url: "http://stream.mcquack.net/168/index.m3u8", source: "" },
+    { id: "114", name: "Animal Planet", url: "http://stream.mcquack.net/114/index.m3u8", source: "" },
+    { id: "177", name: "Discovery", url: "http://stream.mcquack.net/177/index.m3u8", source: "" },
+    { id: "205", name: "ID Discovery", url: "http://stream.mcquack.net/205/index.m3u8", source: "" },
+    { id: "443", name: "Nickelodeon", url: "http://stream.mcquack.net/443/index.m3u8", source: "" },
+    { id: "220", name: "Nickelodeon Jr.", url: "http://stream.mcquack.net/220/index.m3u8", source: "" },
+    { id: "1502", name: "National Geographic", url: "http://stream.mcquack.net/116/index.m3u8", source: "" },
+    { id: "wise", name: "RT", url: "https://wisewatchoott.wiseplayout.com/RT/master.m3u8", source: "" }
+  ];
+  let channelList = (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("tv-online-channels") || "null");
+      return Array.isArray(saved) && saved.length
+        ? saved.map(c => {
+            const canonical = defaultChannels.find(d => d.id === c.id);
+            return canonical ? { ...c, name: canonical.name, url: canonical.url, source: "" } : { ...c, source: "" };
+          })
+        : defaultChannels.map(c => ({...c}));
+    } catch { return defaultChannels.map(c => ({...c})); }
+  })();
+
+  function saveChannels() {
+    try { localStorage.setItem("tv-online-channels", JSON.stringify(channelList)); } catch {}
+  }
+
+  const video = document.getElementById("video");
+  const placeholder = document.getElementById("placeholder");
+  const channelsEl = document.getElementById("channels");
+  const searchEl = document.getElementById("search");
+  let hls = null;
+  let activeId = null;
+
+  function setStatus(_message, _live = false) {}
+
+  function renderChannels(filter = "") {
+    const filtered = channelList.filter(c => (c.name + " " + c.id + " " + c.source).toLowerCase().includes(filter.toLowerCase()));
+    channelsEl.innerHTML = "";
+    if (!filtered.length) {
+      channelsEl.innerHTML = '<div class="empty">Ничего не найдено</div>';
+      return;
+    }
+    filtered.forEach(channel => {
+      const index = channelList.findIndex(c => c.id === channel.id);
+      const item = document.createElement("div");
+      item.className = "channel" + (channel.id === activeId ? " active" : "");
+
+      const main = document.createElement("button");
+      main.className = "channel-main";
+      main.type = "button";
+      const number = document.createElement("span");
+      number.className = "num";
+      number.textContent = String(index + 1).padStart(2, "0");
+      const info = document.createElement("span");
+      info.className = "channel-info";
+      const name = document.createElement("span");
+      name.className = "channel-name";
+      name.textContent = channel.name;
+      const source = document.createElement("span");
+      source.className = "channel-type";
+      source.textContent = "";
+      info.append(name);
+      main.append(number, info);
+      main.addEventListener("click", () => playChannel(channel));
+
+      const actions = document.createElement("span");
+      actions.className = "channel-actions";
+      const up = document.createElement("button");
+      up.className = "mini-btn";
+      up.type = "button";
+      up.title = "Переместить выше";
+      up.textContent = "↑";
+      up.disabled = index === 0;
+      up.addEventListener("click", () => moveChannel(index, -1));
+
+      const down = document.createElement("button");
+      down.className = "mini-btn";
+      down.type = "button";
+      down.title = "Переместить ниже";
+      down.textContent = "↓";
+      down.disabled = index === channelList.length - 1;
+      down.addEventListener("click", () => moveChannel(index, 1));
+
+      actions.append(up, down);
+      item.append(main, actions);
+      channelsEl.appendChild(item);
+    });
+  }
+
+  function moveChannel(index, direction) {
+    const target = index + direction;
+    if (target < 0 || target >= channelList.length) return;
+    [channelList[index], channelList[target]] = [channelList[target], channelList[index]];
+    saveChannels();
+    renderChannels(searchEl.value);
+  }
+
+  function playChannel(channel) {
+    activeId = channel.id;
+    renderChannels(searchEl.value);
+    placeholder.classList.add("hidden");
+    setStatus("Подключение…");
+
+    if (hls) { hls.destroy(); hls = null; }
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+
+    // Native HLS is supported by Safari. Other modern browsers use hls.js.
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = channel.url;
+      startPlayback();
+    } else if (window.Hls && Hls.isSupported()) {
+      hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+      hls.loadSource(channel.url);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => startPlayback());
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) {
+          setStatus(data.type === Hls.ErrorTypes.NETWORK_ERROR ? "Ошибка сети / источник недоступен" : "Ошибка воспроизведения");
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+        }
+      });
+    } else {
+      setStatus("Браузер не поддерживает HLS");
+      placeholder.classList.remove("hidden");
+      placeholder.querySelector("strong").textContent = "HLS не поддерживается";
+    }
+  }
+
+  async function startPlayback() {
+    // Always request playback with audio enabled. Browsers may require a user
+    // gesture before allowing audible autoplay; we never mute the stream.
+    video.muted = false;
+    video.volume = 1;
+    try {
+      await video.play();
+    } catch {
+      setStatus("Нажмите ▶ в плеере — браузер блокирует автозапуск со звуком");
+    }
+  }
+
+  video.addEventListener("playing", () => setStatus("В эфире", true));
+  video.addEventListener("waiting", () => setStatus("Загрузка…"));
+  video.addEventListener("error", () => setStatus("Не удалось загрузить поток"));
+  searchEl.addEventListener("input", e => renderChannels(e.target.value));
+  renderChannels();
+  // Start with the first stream selected; playback may require a click due to browser autoplay rules.
+  playChannel(channelList[0]);
+</script>
+</body>
+</html>
